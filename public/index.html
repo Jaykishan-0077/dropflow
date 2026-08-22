@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DropFlow - High-Speed Mac & Android File Transfer</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="qrcode.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <header>
+        <div class="logo-group">
+            <div class="logo-icon">⚡</div>
+            <div class="logo-text">
+                <h1>DropFlow</h1>
+                <p>Apple Silicon & Android P2P High-Speed Direct Transfer</p>
+            </div>
+        </div>
+        <div class="badge-group">
+            <div class="badge badge-green">
+                <span id="status-indicator">●</span> <span id="status-text">Engine Ready</span>
+            </div>
+            <div class="badge">
+                📱 5G Hotspot / USB Local Mode
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Layout -->
+    <div class="main-grid">
+        
+        <!-- Left Column: Send & Receive Zone -->
+        <div class="card">
+            <h2>Send Files</h2>
+            <p class="drop-subtitle">Direct peer-to-peer transfer. Sliced into 2MB streaming chunks with automatic resume support.</p>
+            
+            <div class="drop-zone" id="drop-zone">
+                <div class="upload-icon">📁</div>
+                <div class="drop-title">Drag & Drop Large Files Here</div>
+                <div class="drop-subtitle">or click to browse your Mac / Android files</div>
+                <button class="btn-primary" onclick="document.getElementById('file-input').click()">Select Files</button>
+                <input type="file" id="file-input" style="display: none;" multiple>
+            </div>
+
+            <!-- Active Transfer Progress Card -->
+            <div class="progress-card" id="progress-card">
+                <div class="progress-header">
+                    <span id="progress-filename">Uploading video.mp4...</span>
+                    <span id="progress-speed">0.0 MB/s</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="progress-bar"></div>
+                </div>
+                <div class="progress-meta">
+                    <span id="progress-transferred">0 MB / 0 MB</span>
+                    <span id="progress-eta">ETA: Calculating...</span>
+                </div>
+            </div>
+
+            <!-- Download Inbox -->
+            <div style="margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3>Transferred Files Inbox</h3>
+                    <button class="btn-download" style="cursor: pointer;" onclick="fetchFileList()">Refresh List</button>
+                </div>
+                <div class="file-list" id="file-list">
+                    <div style="text-align: center; color: var(--text-muted); padding: 20px;">No files received yet.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Quick Pair & Network Connection -->
+        <div class="card">
+            <h2>Quick Connect</h2>
+            <p class="drop-subtitle">Scan QR code on your phone to open the direct high-speed transfer portal.</p>
+            
+            <div class="qr-container">
+                <img class="qr-box" id="qrcode" alt="Scan QR Code to Connect" width="180" height="180" style="background: white; padding: 10px; border-radius: 12px;">
+                <div style="font-size: 12px; color: var(--text-muted); text-align: center;">
+                    Scan with Android camera or browser
+                </div>
+            </div>
+
+            <div>
+                <h3 style="font-size: 14px; margin-bottom: 10px;">Local Network Addresses</h3>
+                <div class="ip-list" id="ip-list">
+                    <div class="ip-item">Loading IP addresses...</div>
+                </div>
+            </div>
+
+            <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: 10px; font-size: 12px; line-height: 1.5; color: var(--text-muted);">
+                <strong style="color: var(--text-main);">💡 Mobile Hotspot Tip:</strong><br>
+                If using Android 5G Hotspot, ensure Mac is connected to your phone's Wi-Fi. <strong>Zero 5G mobile data will be consumed.</strong>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

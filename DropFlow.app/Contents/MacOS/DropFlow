@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Export NVM and system node paths
+export PATH="/Users/jk/.nvm/versions/node/v24.14.1/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+PROJECT_DIR="/Users/jk/.gemini/antigravity/scratch/dropflow"
+cd "$PROJECT_DIR" || exit 1
+
+# Check if server is running on port 7070
+if ! lsof -i :7070 > /dev/null 2>&1; then
+    NODE_BIN="/Users/jk/.nvm/versions/node/v24.14.1/bin/node"
+    if [ ! -f "$NODE_BIN" ]; then
+        NODE_BIN="$(which node)"
+    fi
+    nohup "$NODE_BIN" server.js > /tmp/dropflow.log 2>&1 &
+    disown
+    sleep 1.5
+fi
+
+open "http://localhost:7070"
