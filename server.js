@@ -178,8 +178,12 @@ app.post('/api/upload/chunk', (req, res) => {
 
     req.pipe(writeStream);
 
+    const totalSize = parseInt(req.headers['x-total-size'] || '0', 10);
+    const senderId = req.headers['x-sender-id'] || 'peer';
+
     writeStream.on('finish', () => {
         const stats = fs.statSync(targetPath);
+        const percent = totalSize > 0 ? Math.min(100, Math.round((stats.size / totalSize) * 100)) : Math.round(((chunkIndex + 1) / totalChunks) * 100);
         
         broadcast({
             type: 'TRANSFER_PROGRESS',
@@ -187,7 +191,10 @@ app.post('/api/upload/chunk', (req, res) => {
             filename: safeFilename,
             chunkIndex,
             totalChunks,
-            currentSize: stats.size
+            currentSize: stats.size,
+            totalSize: totalSize,
+            percent: percent,
+            senderId: senderId
         });
 
         if (chunkIndex + 1 === totalChunks) {

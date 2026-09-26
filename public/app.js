@@ -1,15 +1,33 @@
-// DropFlow High-Speed Transfer Client Engine
+// DropFlow High-Speed P2P Transfer Client Engine
 const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB Streaming Chunk Size
+const SENDER_ID = `peer_${Math.random().toString(36).substr(2, 6)}`;
 
 let socket = null;
-let currentUpload = null;
+let activeTransfers = {}; // Track active transfers by fileId
+let allHistoryFiles = [];
 
 document.addEventListener('DOMContentLoaded', () => {
+    initMobileTabs();
     initNetworkInfo();
     initWebSocket();
     initDropZone();
     fetchFileList();
 });
+
+// Mobile Tab Switcher
+function initMobileTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            btn.classList.add('active');
+            const targetTab = document.getElementById(btn.dataset.tab);
+            if (targetTab) targetTab.classList.add('active');
+        });
+    });
+}
 
 // Fetch Server Network & Gateway Info
 async function initNetworkInfo() {
@@ -23,7 +41,6 @@ async function initNetworkInfo() {
         if (data.ipAddresses.length > 0) {
             data.ipAddresses.forEach((ip) => {
                 const url = `http://${ip.address}:${data.port}`;
-
                 const item = document.createElement('div');
                 item.className = 'ip-item';
                 item.innerHTML = `
@@ -46,20 +63,27 @@ async function initNetworkInfo() {
     }
 }
 
-// WebSocket Connection for Real-time Progress Broadcast
+// WebSocket Connection for Bidirectional Real-time Updates (% on both Mobile & Laptop)
 function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     socket = new WebSocket(`${protocol}//${window.location.host}`);
 
     socket.onopen = () => {
         document.getElementById('status-indicator').style.color = '#00e676';
-        document.getElementById('status-text').innerText = 'Engine Connected';
+        document.getElementById('status-text').innerText = 'Engine Ready';
     };
 
     socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'TRANSFER_COMPLETE') {
-            fetchFileList();
+        try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'TRANSFER_PROGRESS') {
+                handleIncomingProgress(data);
+            } else if (data.type === 'TRANSFER_COMPLETE') {
+                handleIncomingComplete(data);
+            }
+        } catch (e) {
+            console.error('Error handling WebSocket message:', e);
         }
     };
 
@@ -68,6 +92,80 @@ function initWebSocket() {
         document.getElementById('status-text').innerText = 'Disconnected - Retrying...';
         setTimeout(initWebSocket, 3000);
     };
+}
+
+// Handle Live Bidirectional Progress (% shown on both Laptop & Mobile)
+function handleIncomingProgress(data) {
+    const { fileId, filename, percent, currentSize, totalSize, senderId } = data;
+    
+    // Ignore local echoed updates if already tracked manually by sender
+    if (senderId === SENDER_ID && activeTransfers[fileId] && activeTransfers[fileId].isLocalSender) {
+        return;
+    }
+
+    if (!activeTransfers[fileId]) {
+        activeTransfers[fileId] = {
+            fileId,
+            filename,
+            totalSize: totalSize || currentSize,
+            isIncoming: true,
+            startTime: Date.now()
+        };
+    }
+
+    const transfer = activeTransfers[fileId];
+    transfer.currentSize = currentSize;
+    transfer.percent = percent || Math.round((currentSize / transfer.totalSize) * 100);
+
+    const elapsedTime = (Date.now() - transfer.startTime) / 1000;
+    transfer.speedMB = elapsedTime > 0 ? ((currentSize / (1024 * 1024)) / elapsedTime).toFixed(1) : '0.0';
+
+    renderActiveTransfers();
+}
+
+function handleIncomingComplete(data) {
+    const { fileId } = data;
+    if (activeTransfers[fileId]) {
+        delete activeTransfers[fileId];
+        renderActiveTransfers();
+    }
+    fetchFileList();
+}
+
+// Render Active Runtime Transfers Panel
+function renderActiveTransfers() {
+    const listEl = document.getElementById('active-transfers-list');
+    const tagEl = document.getElementById('active-count-tag');
+    const keys = Object.keys(activeTransfers);
+
+    tagEl.innerText = `${keys.length} Active`;
+
+    if (keys.length === 0) {
+        listEl.innerHTML = `<div class="empty-state">No active transfers running. Send a file to get started.</div>`;
+        return;
+    }
+
+    listEl.innerHTML = keys.map(id => {
+        const item = activeTransfers[id];
+        const dirText = item.isIncoming ? '⬇ Incoming' : '⬆ Outgoing';
+        const dirClass = item.isIncoming ? 'dir-incoming' : 'dir-outgoing';
+        
+        return `
+            <div class="active-item-card">
+                <div class="active-meta">
+                    <span class="active-filename" title="${escapeHtml(item.filename)}">${escapeHtml(item.filename)}</span>
+                    <span class="dir-badge ${dirClass}">${dirText}</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" style="width: ${item.percent}%;"></div>
+                </div>
+                <div class="active-stats">
+                    <span class="percent-label">${item.percent}% (${formatBytes(item.currentSize || 0)} / ${formatBytes(item.totalSize || 0)})</span>
+                    <span>⚡ ${item.speedMB || '0.0'} MB/s</span>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 // Drag & Drop Setup
@@ -101,7 +199,7 @@ function initDropZone() {
     });
 }
 
-// Upload Files in Queue
+// Process Upload Files Queue
 async function handleFiles(files) {
     for (let i = 0; i < files.length; i++) {
         await uploadFile(files[i]);
@@ -110,21 +208,24 @@ async function handleFiles(files) {
 
 // High-Performance Chunked Upload Engine
 async function uploadFile(file) {
-    const progressCard = document.getElementById('progress-card');
-    const filenameEl = document.getElementById('progress-filename');
-    const speedEl = document.getElementById('progress-speed');
-    const progressBar = document.getElementById('progress-bar');
-    const transferredEl = document.getElementById('progress-transferred');
-    const etaEl = document.getElementById('progress-eta');
-
-    progressCard.style.display = 'block';
-    filenameEl.innerText = `Sending: ${file.name}`;
-    
-    const fileId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const fileId = `${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    
     let startTime = Date.now();
     let uploadedBytes = 0;
+
+    // Register local active transfer
+    activeTransfers[fileId] = {
+        fileId,
+        filename: file.name,
+        totalSize: file.size,
+        currentSize: 0,
+        percent: 0,
+        speedMB: '0.0',
+        isLocalSender: true,
+        isIncoming: false,
+        startTime
+    };
+    renderActiveTransfers();
 
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
         const start = chunkIndex * CHUNK_SIZE;
@@ -132,36 +233,39 @@ async function uploadFile(file) {
         const chunk = file.slice(start, end);
 
         try {
-            await uploadChunk(chunk, fileId, file.name, chunkIndex, totalChunks);
+            await uploadChunk(chunk, fileId, file.name, chunkIndex, totalChunks, file.size);
             uploadedBytes += (end - start);
 
-            // Calculate Metrics
             const elapsedTime = (Date.now() - startTime) / 1000;
-            const speedMB = (uploadedBytes / (1024 * 1024)) / elapsedTime;
-            const progressPercent = Math.round((uploadedBytes / file.size) * 100);
-            const remainingBytes = file.size - uploadedBytes;
-            const etaSeconds = speedMB > 0 ? Math.round((remainingBytes / (1024 * 1024)) / speedMB) : 0;
+            const speedMB = elapsedTime > 0 ? ((uploadedBytes / (1024 * 1024)) / elapsedTime).toFixed(1) : '0.0';
+            const percent = Math.min(100, Math.round((uploadedBytes / file.size) * 100));
 
-            // Update UI
-            progressBar.style.width = `${progressPercent}%`;
-            speedEl.innerText = `${speedMB.toFixed(1)} MB/s`;
-            transferredEl.innerText = `${formatBytes(uploadedBytes)} / ${formatBytes(file.size)} (${progressPercent}%)`;
-            etaEl.innerText = `ETA: ${etaSeconds}s remaining`;
+            // Update local active transfer object
+            if (activeTransfers[fileId]) {
+                activeTransfers[fileId].currentSize = uploadedBytes;
+                activeTransfers[fileId].percent = percent;
+                activeTransfers[fileId].speedMB = speedMB;
+                renderActiveTransfers();
+            }
 
         } catch (err) {
             console.error(`Error uploading chunk ${chunkIndex}:`, err);
             alert(`Transfer error on ${file.name}. Click OK to retry.`);
-            chunkIndex--; // Retry chunk
+            chunkIndex--;
         }
     }
 
+    // Transfer finished: Remove from active transfers and refresh history
     setTimeout(() => {
-        progressCard.style.display = 'none';
+        if (activeTransfers[fileId]) {
+            delete activeTransfers[fileId];
+            renderActiveTransfers();
+        }
         fetchFileList();
-    }, 1200);
+    }, 800);
 }
 
-function uploadChunk(chunk, fileId, filename, chunkIndex, totalChunks) {
+function uploadChunk(chunk, fileId, filename, chunkIndex, totalChunks, totalSize) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload/chunk', true);
@@ -170,6 +274,8 @@ function uploadChunk(chunk, fileId, filename, chunkIndex, totalChunks) {
         xhr.setRequestHeader('x-file-name', encodeURIComponent(filename));
         xhr.setRequestHeader('x-chunk-index', chunkIndex);
         xhr.setRequestHeader('x-total-chunks', totalChunks);
+        xhr.setRequestHeader('x-total-size', totalSize);
+        xhr.setRequestHeader('x-sender-id', SENDER_ID);
         xhr.setRequestHeader('Content-Type', 'application/octet-stream');
 
         xhr.onload = () => {
@@ -185,38 +291,51 @@ function uploadChunk(chunk, fileId, filename, chunkIndex, totalChunks) {
     });
 }
 
-// Fetch Files Inbox
+// Fetch & Render Transferred Files History & Inbox
 async function fetchFileList() {
     try {
         const res = await fetch('/api/files');
-        const files = await res.json();
-        const listEl = document.getElementById('file-list');
-        
-        if (files.length === 0) {
-            listEl.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">No files received yet.</div>`;
-            return;
-        }
-
-        listEl.innerHTML = files.map(file => `
-            <div class="file-item">
-                <div class="file-info">
-                    <div class="file-icon">${getFileIcon(file.name)}</div>
-                    <div>
-                        <div class="file-name">${escapeHtml(file.name)}</div>
-                        <div class="file-size">${formatBytes(file.size)} • ${new Date(file.mtime).toLocaleTimeString()}</div>
-                    </div>
-                </div>
-                <a href="${file.downloadUrl}" download="${escapeHtml(file.name)}" class="btn-download">Download</a>
-            </div>
-        `).join('');
+        allHistoryFiles = await res.json();
+        renderHistoryList(allHistoryFiles);
     } catch (err) {
         console.error('Failed to fetch file list:', err);
     }
 }
 
+function filterHistoryFiles() {
+    const query = document.getElementById('history-search').value.toLowerCase();
+    const filtered = allHistoryFiles.filter(f => f.name.toLowerCase().includes(query));
+    renderHistoryList(filtered);
+}
+
+function renderHistoryList(files) {
+    const listEl = document.getElementById('file-list');
+    const badgeEl = document.getElementById('history-badge-count');
+    
+    if (badgeEl) badgeEl.innerText = files.length;
+
+    if (files.length === 0) {
+        listEl.innerHTML = `<div class="empty-state">No received files yet.</div>`;
+        return;
+    }
+
+    listEl.innerHTML = files.map(file => `
+        <div class="file-item">
+            <div class="file-info">
+                <div class="file-icon">${getFileIcon(file.name)}</div>
+                <div>
+                    <div class="file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+                    <div class="file-size">${formatBytes(file.size)} • ${new Date(file.mtime).toLocaleTimeString()}</div>
+                </div>
+            </div>
+            <a href="${file.downloadUrl}" download="${escapeHtml(file.name)}" class="btn-download">Download</a>
+        </div>
+    `).join('');
+}
+
 // Helper Functions
 function formatBytes(bytes) {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
