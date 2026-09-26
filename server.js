@@ -7,9 +7,26 @@ const os = require('os');
 const cors = require('cors');
 const QRCode = require('qrcode');
 
+// Global error guards to prevent crash on network interface / socket changes (e.g. 2.4GHz <-> 5GHz Hotspot)
+process.on('uncaughtException', (err) => {
+    console.error('Captured uncaught exception (server kept alive):', err.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('Captured unhandled rejection (server kept alive):', reason);
+});
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// Ignore socket errors on HTTP & WebSocket server
+server.on('error', (err) => {
+    console.error('Server socket error (handled):', err.message);
+});
+
+wss.on('error', (err) => {
+    console.error('WebSocket server error (handled):', err.message);
+});
 
 const PORT = process.env.PORT || 7070;
 const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
@@ -24,7 +41,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/downloads', express.static(DOWNLOADS_DIR));
 
-// Helper: Get local network IPv4 addresses
+// Helper: Get local network IPv4 addresses dynamically
 function getLocalIpAddresses() {
     const interfaces = os.networkInterfaces();
     const addresses = [];
@@ -51,16 +68,23 @@ function broadcast(data) {
     const message = JSON.stringify(data);
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
+            try {
+                client.send(message);
+            } catch (e) {
+                // Ignore dead client socket write errors
+            }
         }
     });
 }
 
 wss.on('connection', (ws) => {
+    ws.on('error', (err) => {
+        // Handle individual socket error silently
+    });
     ws.send(JSON.stringify({ type: 'CONNECTED', message: 'Connected to DropFlow Engine' }));
 });
 
-// API: Get Network Info & QR Code
+// API: Get Network Info & Dynamic QR Code
 app.get('/api/info', async (req, res) => {
     const ips = getLocalIpAddresses();
     const primaryIp = ips.length > 0 ? ips[0].address : 'localhost';
@@ -113,7 +137,7 @@ app.get('/api/files', (req, res) => {
     });
 });
 
-// API: Init Chunked Upload (Support Resumable Transfers)
+// API: Init Chunked Upload
 app.post('/api/upload/init', (req, res) => {
     const { filename, totalSize, fileId } = req.body;
     if (!filename || !totalSize || !fileId) {
@@ -123,7 +147,6 @@ app.post('/api/upload/init', (req, res) => {
     const safeFilename = path.basename(filename);
     const targetPath = path.join(DOWNLOADS_DIR, safeFilename);
     
-    // Check if partial file exists for resume
     let existingSize = 0;
     if (fs.existsSync(targetPath)) {
         existingSize = fs.statSync(targetPath).size;
@@ -137,7 +160,7 @@ app.post('/api/upload/init', (req, res) => {
     });
 });
 
-// API: Receive File Chunk (Raw Binary Stream for Max Performance)
+// API: Receive File Chunk
 app.post('/api/upload/chunk', (req, res) => {
     const fileId = req.headers['x-file-id'];
     const filename = req.headers['x-file-name'];
