@@ -364,13 +364,16 @@ header {
   color: var(--accent-cyan);
 }
 
-/* History Search & File Inbox */
-.search-bar-container {
+/* History Search & Sort Filter Controls */
+.filter-controls-container {
   width: 100%;
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .search-input {
-  width: 100%;
+  flex: 1;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
@@ -378,10 +381,35 @@ header {
   color: var(--text-main);
   font-size: 13px;
   outline: none;
+  transition: border-color 0.2s ease;
 }
 
 .search-input:focus {
   border-color: var(--accent-cyan);
+}
+
+.sort-select {
+  background: rgba(22, 28, 45, 0.9);
+  border: 1px solid rgba(79, 172, 254, 0.3);
+  color: var(--text-main);
+  border-radius: 20px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.sort-select:focus, .sort-select:hover {
+  border-color: var(--accent-cyan);
+}
+
+@media (max-width: 600px) {
+  .filter-controls-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .file-list {

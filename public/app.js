@@ -296,16 +296,46 @@ async function fetchFileList() {
     try {
         const res = await fetch('/api/files');
         allHistoryFiles = await res.json();
-        renderHistoryList(allHistoryFiles);
+        filterAndSortHistoryFiles();
     } catch (err) {
         console.error('Failed to fetch file list:', err);
     }
 }
 
-function filterHistoryFiles() {
-    const query = document.getElementById('history-search').value.toLowerCase();
-    const filtered = allHistoryFiles.filter(f => f.name.toLowerCase().includes(query));
-    renderHistoryList(filtered);
+function filterAndSortHistoryFiles() {
+    const searchEl = document.getElementById('history-search');
+    const sortEl = document.getElementById('history-sort');
+    
+    const query = searchEl ? searchEl.value.toLowerCase().trim() : '';
+    const sortBy = sortEl ? sortEl.value : 'newest';
+
+    let result = allHistoryFiles.filter(f => f.name.toLowerCase().includes(query));
+
+    switch (sortBy) {
+        case 'newest':
+            result.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+            break;
+        case 'oldest':
+            result.sort((a, b) => new Date(a.mtime) - new Date(b.mtime));
+            break;
+        case 'name_asc':
+            result.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+            break;
+        case 'name_desc':
+            result.sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true, sensitivity: 'base' }));
+            break;
+        case 'size_desc':
+            result.sort((a, b) => b.size - a.size);
+            break;
+        case 'size_asc':
+            result.sort((a, b) => a.size - b.size);
+            break;
+        default:
+            result.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+            break;
+    }
+
+    renderHistoryList(result);
 }
 
 function renderHistoryList(files) {

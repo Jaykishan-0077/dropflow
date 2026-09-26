@@ -76,9 +76,17 @@
                 </div>
             </div>
 
-            <!-- History Search Bar -->
-            <div class="search-bar-container">
-                <input type="text" id="history-search" class="search-input" placeholder="🔍 Search received files..." oninput="filterHistoryFiles()">
+            <!-- History Search & Sort Controls -->
+            <div class="filter-controls-container">
+                <input type="text" id="history-search" class="search-input" placeholder="🔍 Search received files..." oninput="filterAndSortHistoryFiles()">
+                <select id="history-sort" class="sort-select" onchange="filterAndSortHistoryFiles()">
+                    <option value="newest">📅 Newest First</option>
+                    <option value="oldest">📅 Oldest First</option>
+                    <option value="name_asc">🔤 Name (A - Z)</option>
+                    <option value="name_desc">🔤 Name (Z - A)</option>
+                    <option value="size_desc">🐘 Size (Largest First)</option>
+                    <option value="size_asc">🐭 Size (Smallest First)</option>
+                </select>
             </div>
 
             <!-- History File List -->
