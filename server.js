@@ -29,8 +29,8 @@ wss.on('error', (err) => {
 });
 
 const PORT = process.env.PORT || 7070;
-const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
-const TEMP_DIR = path.join(__dirname, 'temp_chunks');
+const DOWNLOADS_DIR = process.env.DROPFLOW_DIR || path.join(os.homedir(), 'Downloads', 'DropFlow');
+const TEMP_DIR = path.join(os.tmpdir(), 'dropflow_temp');
 
 // Ensure directories exist
 if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
@@ -135,6 +135,15 @@ app.get('/api/files', (req, res) => {
             });
         res.json(fileList);
     });
+});
+
+// API: Open Downloads Directory in macOS Finder
+app.post('/api/open-folder', (req, res) => {
+    if (os.platform() === 'darwin') {
+        const { exec } = require('child_process');
+        exec(`open "${DOWNLOADS_DIR}"`);
+    }
+    res.json({ success: true, path: DOWNLOADS_DIR });
 });
 
 // API: Init Chunked Upload

@@ -291,6 +291,14 @@ function uploadChunk(chunk, fileId, filename, chunkIndex, totalChunks, totalSize
     });
 }
 
+async function openDownloadsFolder() {
+    try {
+        await fetch('/api/open-folder', { method: 'POST' });
+    } catch (e) {
+        console.error('Failed to open downloads folder:', e);
+    }
+}
+
 // Fetch & Render Transferred Files History & Inbox
 async function fetchFileList() {
     try {

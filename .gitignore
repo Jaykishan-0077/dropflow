@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+DropFlow.app/Contents/Resources/node_modules/
+DropFlowNative/AppIcon.iconset/
 
 # Local storage and temporary files
 downloads/

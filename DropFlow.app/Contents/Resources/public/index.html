@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DropFlow - High-Speed P2P File Transfer</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="qrcode.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <header>
+        <div class="logo-group">
+            <div class="logo-icon">⚡</div>
+            <div class="logo-text">
+                <h1>DropFlow</h1>
+                <p>Apple Silicon & Android P2P High-Speed Transfer</p>
+            </div>
+        </div>
+        <div class="badge-group">
+            <div class="badge badge-green">
+                <span id="status-indicator">●</span> <span id="status-text">Engine Ready</span>
+            </div>
+            <div class="badge desktop-only">
+                📱 5G Hotspot / USB Local
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Segmented Navigation Tabs -->
+    <div class="mobile-tabs" id="mobile-tabs">
+        <button class="tab-btn active" data-tab="tab-transfer">⚡ Transfer</button>
+        <button class="tab-btn" data-tab="tab-history">📁 Inbox & History <span id="history-badge-count" class="badge-pill">0</span></button>
+        <button class="tab-btn" data-tab="tab-connect">📱 Connect</button>
+    </div>
+
+    <!-- Main Content Layout -->
+    <div class="main-grid">
+        
+        <!-- Tab 1: Send Files & Active Runtime Transfers -->
+        <div class="card tab-content active" id="tab-transfer">
+            <div class="card-header">
+                <h2>Send & Receive</h2>
+                <span class="sub-badge">2MB Chunk Stream Engine</span>
+            </div>
+            
+            <!-- Drag & Drop Target -->
+            <div class="drop-zone" id="drop-zone">
+                <div class="upload-icon">📁</div>
+                <div class="drop-title">Drag & Drop Files Here</div>
+                <div class="drop-subtitle">or tap to select photos, videos, or files</div>
+                <button class="btn-primary" onclick="document.getElementById('file-input').click()">Select Files</button>
+                <input type="file" id="file-input" style="display: none;" multiple>
+            </div>
+
+            <!-- Active Runtime Transfers Panel (Separated from History) -->
+            <div class="section-container" id="active-transfers-section">
+                <div class="section-title-bar">
+                    <h3>⚡ Active Runtime Transfers</h3>
+                    <span id="active-count-tag" class="status-tag">0 Active</span>
+                </div>
+                <div class="active-list" id="active-transfers-list">
+                    <div class="empty-state">No active transfers running. Send a file to get started.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Transferred Files History & Inbox (Separated) -->
+        <div class="card tab-content" id="tab-history">
+            <div class="card-header">
+                <h2>Transferred Files Inbox & History</h2>
+                <div class="actions-group">
+                    <button class="btn-secondary" onclick="openDownloadsFolder()">📂 Open in Finder</button>
+                    <button class="btn-secondary" onclick="fetchFileList()">↻ Refresh</button>
+                </div>
+            </div>
+
+            <!-- History Search & Sort Controls -->
+            <div class="filter-controls-container">
+                <input type="text" id="history-search" class="search-input" placeholder="🔍 Search received files..." oninput="filterAndSortHistoryFiles()">
+                <select id="history-sort" class="sort-select" onchange="filterAndSortHistoryFiles()">
+                    <option value="newest">📅 Newest First</option>
+                    <option value="oldest">📅 Oldest First</option>
+                    <option value="name_asc">🔤 Name (A - Z)</option>
+                    <option value="name_desc">🔤 Name (Z - A)</option>
+                    <option value="size_desc">🐘 Size (Largest First)</option>
+                    <option value="size_asc">🐭 Size (Smallest First)</option>
+                </select>
+            </div>
+
+            <!-- History File List -->
+            <div class="file-list" id="file-list">
+                <div class="empty-state">No received files yet.</div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Quick Connect Panel -->
+        <div class="card tab-content" id="tab-connect">
+            <h2>Quick Connect</h2>
+            <p class="drop-subtitle">Scan QR code on your phone camera to open the high-speed transfer portal instantly.</p>
+            
+            <div class="qr-container">
+                <img class="qr-box" id="qrcode" alt="Scan QR Code to Connect" width="180" height="180">
+                <div class="qr-label">
+                    Scan with Android / Phone Camera
+                </div>
+            </div>
+
+            <div class="network-info-block">
+                <h3>Local Network Addresses</h3>
+                <div class="ip-list" id="ip-list">
+                    <div class="ip-item">Loading network interfaces...</div>
+                </div>
+            </div>
+
+            <div class="tip-box">
+                <strong>💡 Mobile Hotspot Tip:</strong><br>
+                If using Android 5G Hotspot, connect Mac Wi-Fi to your phone's Hotspot. <strong>Zero 5G mobile data will be consumed.</strong>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
