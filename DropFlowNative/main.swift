@@ -1,7 +1,7 @@
 import Cocoa
 import WebKit
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     var serverProcess: Process?
@@ -30,7 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit DropFlow", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
-        // Edit Menu (Allows Copy/Paste in inputs)
+        // Edit Menu
         let editMenuItem = NSMenuItem()
         mainMenu.addItem(editMenuItem)
         let editMenu = NSMenu(title: "Edit")
@@ -39,6 +39,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        // View Menu (Reload)
+        let viewMenuItem = NSMenuItem()
+        mainMenu.addItem(viewMenuItem)
+        let viewMenu = NSMenu(title: "View")
+        viewMenuItem.submenu = viewMenu
+        let reloadItem = viewMenu.addItem(withTitle: "Reload", action: #selector(reloadWebView), keyEquivalent: "r")
+        reloadItem.target = self
 
         // Window Menu
         let windowMenuItem = NSMenuItem()
@@ -49,6 +57,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
         NSApp.mainMenu = mainMenu
+    }
+
+    @objc func reloadWebView() {
+        webView?.reload()
     }
 
     func setupWindow() {
@@ -74,10 +86,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
+        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
         
         webView = WKWebView(frame: window.contentView!.bounds, configuration: config)
         webView.autoresizingMask = [.width, .height]
-        webView.setValue(false, forKey: "drawsBackground")
+        webView.navigationDelegate = self
         window.contentView?.addSubview(webView)
 
         window.makeKeyAndOrderFront(nil)
@@ -160,7 +173,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
 
-        // Poll until server is ready (up to 4 seconds)
         var attempts = 0
         Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] timer in
             guard let self = self else {
@@ -174,7 +186,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     DispatchQueue.main.async {
                         self.webView.load(URLRequest(url: self.targetURL))
                     }
-                } else if attempts > 25 {
+                } else if attempts > 30 {
                     timer.invalidate()
                     DispatchQueue.main.async {
                         self.showError("Server failed to respond on port 7070. Please try again.")
@@ -195,6 +207,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         }
         task.resume()
+    }
+
+    // WKNavigationDelegate
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        // Retry once after a brief delay if server was still spinning up
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            self.webView.load(URLRequest(url: self.targetURL))
+        }
     }
 
     func showError(_ message: String) {
