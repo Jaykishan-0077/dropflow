@@ -6,11 +6,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
     var webView: WKWebView!
     var serverProcess: Process?
     let targetURL = URL(string: "http://127.0.0.1:7070")!
+    var loadRetries = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
         setupWindow()
-        startServerAndLoad()
+        launchServerAndLoad()
     }
 
     func setupMainMenu() {
@@ -60,27 +61,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
     }
 
     @objc func reloadWebView() {
-        webView?.reload()
+        loadRetries = 0
+        webView?.load(URLRequest(url: targetURL))
     }
 
     func setupWindow() {
         let screenRect = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
-        let windowWidth: CGFloat = 1000
-        let windowHeight: CGFloat = 750
+        let windowWidth: CGFloat = 1020
+        let windowHeight: CGFloat = 760
         let xPos = screenRect.origin.x + (screenRect.width - windowWidth) / 2
         let yPos = screenRect.origin.y + (screenRect.height - windowHeight) / 2
 
         let contentRect = NSRect(x: xPos, y: yPos, width: windowWidth, height: windowHeight)
         window = NSWindow(
             contentRect: contentRect,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.delegate = self
-        window.title = "DropFlow"
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
+        window.title = "DropFlow - High-Speed P2P Transfer"
         window.appearance = NSAppearance(named: .darkAqua)
         window.minSize = NSSize(width: 500, height: 550)
 
@@ -88,10 +88,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
         
-        webView = WKWebView(frame: window.contentView!.bounds, configuration: config)
+        webView = WKWebView(frame: contentRect, configuration: config)
         webView.autoresizingMask = [.width, .height]
         webView.navigationDelegate = self
-        window.contentView?.addSubview(webView)
+        window.contentView = webView
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -128,22 +128,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
         return nil
     }
 
-    func startServerAndLoad() {
-        checkServerAlive { [weak self] isAlive in
+    func launchServerAndLoad() {
+        // First spawn server if not running
+        spawnServerIfNeeded()
+
+        // Give server 250ms head start and load URL on main thread
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self = self else { return }
-            if isAlive {
-                DispatchQueue.main.async {
-                    self.webView.load(URLRequest(url: self.targetURL))
-                }
-            } else {
-                self.spawnServer()
-            }
+            self.loadRetries = 0
+            self.webView.load(URLRequest(url: self.targetURL))
         }
     }
 
-    func spawnServer() {
+    func spawnServerIfNeeded() {
+        // Quick check if port 7070 already responding
+        let sem = DispatchSemaphore(value: 0)
+        var isRunning = false
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:7070/api/info")!)
+        req.timeoutInterval = 0.3
+        URLSession.shared.dataTask(with: req) { _, response, _ in
+            if let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 {
+                isRunning = true
+            }
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 0.4)
+
+        if isRunning {
+            print("[DropFlow] Server is already running on port 7070.")
+            return
+        }
+
         guard let nodePath = findNodePath() else {
-            showError("Node.js could not be located. Please ensure Node.js is installed on your Mac.")
+            showError("Node.js was not found. Please ensure Node.js is installed on your Mac.")
             return
         }
 
@@ -168,63 +185,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
 
         do {
             try process.run()
+            print("[DropFlow] Spawned server successfully.")
         } catch {
             showError("Failed to launch DropFlow server: \(error.localizedDescription)")
-            return
         }
-
-        var attempts = 0
-        Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] timer in
-            guard let self = self else {
-                timer.invalidate()
-                return
-            }
-            attempts += 1
-            self.checkServerAlive { isAlive in
-                if isAlive {
-                    timer.invalidate()
-                    DispatchQueue.main.async {
-                        self.webView.load(URLRequest(url: self.targetURL))
-                    }
-                } else if attempts > 30 {
-                    timer.invalidate()
-                    DispatchQueue.main.async {
-                        self.showError("Server failed to respond on port 7070. Please try again.")
-                    }
-                }
-            }
-        }
-    }
-
-    func checkServerAlive(completion: @escaping (Bool) -> Void) {
-        var req = URLRequest(url: URL(string: "http://127.0.0.1:7070/api/info")!)
-        req.timeoutInterval = 0.5
-        let task = URLSession.shared.dataTask(with: req) { _, response, _ in
-            if let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 {
-                completion(true)
-            } else {
-                completion(false)
-            }
-        }
-        task.resume()
     }
 
     // WKNavigationDelegate
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        print("[DropFlow] Webview finished loading successfully.")
+    }
+
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        // Retry once after a brief delay if server was still spinning up
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            self.webView.load(URLRequest(url: self.targetURL))
+        print("[DropFlow] Provisional navigation failed: \(error.localizedDescription). Retrying...")
+        if loadRetries < 20 {
+            loadRetries += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self = self else { return }
+                self.webView.load(URLRequest(url: self.targetURL))
+            }
+        } else {
+            showError("Could not connect to DropFlow engine on port 7070.")
         }
     }
 
     func showError(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "DropFlow"
-        alert.informativeText = message
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "DropFlow"
+            alert.informativeText = message
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
